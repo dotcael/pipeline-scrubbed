@@ -1,0 +1,312 @@
+# Model routing for the bug-bounty pipeline.
+#
+# Two things live here:
+#   1. PROVIDER COOLDOWN POLICY  (providers:) -- how long to stop calling a
+#      provider after it rejects a call. Policy, not code, so tuning is a
+#      config edit.
+#   2. MODEL PRIORITY LISTS     (per role) -- an ordered list, walked at
+#      dispatch time. The first N LIVE models win; a model is not live if
+#      its provider is in cooldown, or it is at its own known cap.
+#
+# PROVIDER DIVERSITY IS MANDATORY, not a preference. A provider's models
+# share ONE account-level quota, so three models on one provider means one
+# exhaustion event takes out the entire committee. Observed 2026-10-21: all
+# three members returned 429 provider.quota simultaneously -- 0/3 votes,
+# total loss of the committee. Three members across three providers means
+# any ONE provider exhausting still leaves 2/3 able to vote.
+#
+# ORDERING POLICY (operator directive 2026-10-30): FREE FIRST, PAID LAST.
+# The free lanes are barely used, so on a normal day they answer and nothing
+# is billed. The paid lane (deepseek) is the FALLBACK that must always be
+# present in a roster -- never the primary. It is the one lane that cannot
+# be rate-limited into uselessness, so its job is to stop the pipeline
+# parking when every free quota is spent. It is reached only when the free
+# lane in front of it has failed.
+#
+# ---------------------------------------------------------------------------
+# 2026-10-30 ROSTER REBUILD (unparked; supersedes the 2026-10-22 park)
+#
+# The 2026-10-22 rosters were dead weight: minimax free was RETIRED by the
+# vendor and the whole opencode free tier was capped, so minimax was primary
+# in 6 of 7 roles and every stage parked INSUFFICIENT CAPACITY. Those rows
+# are DELETED, not left as tails -- a known-dead roster entry burns a call,
+# fires a notification and slows every run while it fails.
+#
+# Replacement, measured live 2026-10-30:
+#   * fcc-* : the free-claude-code proxy on 127.0.0.1:8082, in front of
+#             three SEPARATE free accounts (Groq, NVIDIA NIM, Gemini).
+#   * deepseek : paid, prepaid balance, $0.15/$0.60 per 1M off-peak.
+#
+# WHY fcc IS SPLIT INTO THREE PROVIDER IDS. The proxy is one process, but
+# its upstreams are separate accounts with separate quotas. Registered as a
+# single provider, a Groq rate-limit would cool the NVIDIA and Gemini seats
+# too -- the exact failure the diversity rule exists to prevent. Each id gets
+# its own cooldown bucket so a 429 cools only the account that earned it.
+# HONEST CAVEAT, recorded so nobody over-reads the metric: this is
+# UPSTREAM-level independence, not path-level. All three ids share one local
+# proxy process, so if the proxy dies, all three die together.
+# ---------------------------------------------------------------------------
+
+providers:
+  deepseek:
+    # Paid, prepaid balance. A 429 is a real provider rate-limit and clears
+    # fast, so 5 min. A 402 (insufficient balance) classifies as auth and
+    # needs the operator to top up -- do not retry into it.
+    quota_cooldown: 300
+    auth_cooldown: 3600
+    timeout_cooldown: 60
+    server_cooldown: 60
+  fcc-groq:
+    # Free tier via the local proxy. No usage API upstream -> reactive only.
+    quota_cooldown: 600
+    auth_cooldown: 3600
+    timeout_cooldown: 60
+    server_cooldown: 60
+  fcc-nim:
+    quota_cooldown: 600
+    auth_cooldown: 3600
+    timeout_cooldown: 60
+    server_cooldown: 60
+  fcc-gemini:
+    # Gemini's free tier is 20 requests/DAY/model, not 20/minute. A 429 here
+    # means "come back tomorrow", so a 10-minute retry is pure waste. The
+    # daily_caps entry below is the real defence; this cooldown bounds the
+    # damage if a cap slips.
+    quota_cooldown: 21600
+    auth_cooldown: 3600
+    timeout_cooldown: 60
+    server_cooldown: 60
+  fcc:
+    # Legacy single-provider id, kept ONLY because offload's agent lane
+    # pins fcc/groq/openai/gpt-oss-120b. The pipeline does not use it.
+    quota_cooldown: 600
+    auth_cooldown: 3600
+    timeout_cooldown: 60
+    server_cooldown: 60
+  beatapi:
+    # 1 request/minute, so the cooldown has to clear a full minute.
+    quota_cooldown: 65
+    auth_cooldown: 3600
+    timeout_cooldown: 60
+    server_cooldown: 60
+
+# ---------------------------------------------------------------------------
+# MEASURED THROUGH `opencode run` ON X, 2026-10-30 (not through curl, and not
+# through the proxy directly -- the tool the pipeline actually calls):
+#
+#   deepseek/deepseek-flash                      4s   "ROSTER_OK"   (paid)
+#   fcc-nim/nvidia_nim/nvidia/nemotron-...       8s   "ROSTER_OK"   (free)
+#   fcc-gemini/gemini/models/gemini-3.5-flash-lite 11s "ROSTER_OK"  (free)
+#   beatapi/deepseek-v4.1-flash-free            23s   "ROSTER_OK"   (free, 1/min)
+#   fcc-groq/groq/openai/gpt-oss-120b      >10 MIN   SILENT        (free)
+#   fcc-groq/groq/qwen/qwen3.8-27b        1217s   TRANSPORT TIMEOUT (free)
+#
+# A curl to the proxy said 200 for gpt-oss -- and returned EMPTY content. The
+# account is alive and the model still produces nothing usable, which is why
+# "reachable" is not the test. Both Groq models are therefore NOT in any
+# roster: a lane that returns blanks (or nothing) is worse than a lane that is
+# down, because a blank used to be able to fill a committee seat.
+#
+# qwen is the sharper half of that lesson: against the proxy it answered "OK"
+# in ~1s, and through `opencode run` it hung for 1217s (20 minutes) before the
+# client gave up with "Timed out waiting for response headers". The fast probe
+# number was measuring the wrong layer. That 1217s is also the argument for
+# model_with_timeout: without a ceiling, one such seat is 20 minutes of a run
+# that was designed to fail fast.
+# nemotron answers cleanly and fastest, but it stays out of hypothesis /
+# triage / evaluator / challenger (it answers by recall, not computation).
+# ---------------------------------------------------------------------------
+
+scout:
+  # High volume, fast, low stakes. Nemotron lives HERE, not in hypothesis:
+  # on 2026-10-21 it answered a CVSS question with a confident, correct
+  # 7.5 that it had RECALLED rather than computed (its trace shows it
+  # cycling through 5.3 / 6.4 / 8.2 and settling). That is the wrong
+  # profile for a scoring decision, and the right one for scouting.
+  models:
+    - fcc-nim/nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b   # 8s, measured
+    - fcc-gemini/gemini/models/gemini-3.5-flash-lite         # 11s, measured
+    - deepseek/deepseek-flash                        # paid fallback
+  committee_size: 1
+  min_votes: 1
+
+recon:
+  # Structure mapping benefits from a long context window.
+  #
+  # MEASURED 2026-10-30 through the proxy with an 8-token probe, and then again
+  # through `opencode run` -- which is the number that matters, and it disagreed:
+  #   nemotron-3-ultra 550B   1.2s proxy / 8s opencode   <- FAILS on structured output
+  #   gemini-3.5-flash-lite   11s opencode               <- WORKS, free
+  #   qwen3.8-27b             ~1s proxy / 1217s TIMEOUT  <- NOT used
+  #   deepseek-v4.1-flash    >45s       / never answered <- NOT used
+  # A proxy probe proves the account; only an `opencode run` proves the lane.
+  # Nemotron moved to 2nd (cooldown after failure); Gemini first.
+  models:
+    - fcc-gemini/gemini/models/gemini-3.5-flash-lite
+    - fcc-nim/nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b
+    - deepseek/deepseek-flash                        # paid fallback
+  committee_size: 1
+  min_votes: 1
+
+hypothesis:
+  # 3-model committee; 2/3 promote; a member that errors is a NON-VOTE,
+  # not a disagreement. min_votes is the floor below which the stage parks
+  # outright (INSUFFICIENT CAPACITY) rather than limping forward on one
+  # voice -- and that is deliberate: if only the paid lane is alive, there
+  # is no committee, and a "committee" of one opinion must not be dressed
+  # up as three.
+  #
+  # Three DIFFERENT upstreams fill the three seats on a normal day, so the
+  # common path costs $0.00. beatapi is backfill (1 req/min, so it is kept
+  # out of the everyday path on purpose). deepseek is last: it gets a seat
+  # only when free quotas are gone.
+  #
+  # SEAT SIZING IS MEASURED (2026-10-30, 8-token probes through the proxy):
+  #   groq/gpt-oss-120b        200, fast        -> seat 1
+  #   gemini/3.5-flash-lite    2.3s             -> seat 2
+  #   beatapi deepseek         free, 1 req/min  -> seat 3 (one call per run,
+  #                                                 so the rate limit only
+  #                                                 costs a wait on a retry)
+  #   nim/deepseek-v4.1-flash  >45s, HANGS     -> demoted below beatapi
+  #   gemini/3.8-flash         >45s, HANGS     -> demoted below beatapi
+  # A hanging seat is worse than a slow one: it burns the stage's timeout and
+  # looks like a dead provider.
+  models:
+    - fcc-gemini/gemini/models/gemini-3.5-flash-lite   # 11s, free, judgment-safe
+    - beatapi/deepseek-v4.1-flash-free                # 23s, free, 1 req/min
+    - deepseek/deepseek-flash                         # paid anchor
+    - deepseek/deepseek-v4-pro                        # last resort, 3x price
+  committee_size: 3
+  min_votes: 2
+  agreement: 2    # two-of-three promotion
+
+triage:
+  # Needs verified computation, not confident recall.
+  models:
+    - fcc-gemini/gemini/models/gemini-3.5-flash-lite
+    - deepseek/deepseek-flash
+  committee_size: 1
+  min_votes: 1
+
+evaluator:
+  # "Does the EVIDENCE support the claim?" -- a different question from the
+  # severity committee's. It answers with a CVSS VECTOR; the score and band
+  # are CALCULATED from that vector by tools/cvss31.py, so the model never
+  # states a number and never gets to recall one.
+  #
+  # The evaluator/challenger pair is kept on DIFFERENT MODELS AND DIFFERENT
+  # PROVIDERS at dispatch time (select_models.py --exclude-model/
+  # --exclude-provider). The two providers are also different UPSTREAMS
+  # (Groq vs NVIDIA), never two seats behind the same fcc id.
+  models:
+    - fcc-gemini/gemini/models/gemini-3.5-flash-lite
+    - deepseek/deepseek-flash
+  committee_size: 1
+  min_votes: 1
+
+challenger:
+  # "Attack the claim." Deliberately never shown the evaluator's answer: a
+  # challenger that can see the verdict anchors on it and rubber-stamps it.
+  #
+  # NEMOTRON IS DELIBERATELY ABSENT HERE, and it is worth saying why, because
+  # "the challenger is a judgment role" is not the same argument as the one
+  # that keeps it out of hypothesis/triage:
+  #
+  #   In hypothesis/triage the concern was ARITHMETIC -- nemotron answered a
+  #   CVSS question with a confident 7.5 it had RECALLED rather than computed.
+  #   That concern is now retired structurally: cvss31.py computes the score
+  #   and band, so a wrong vector just disagrees and the finding parks.
+  #
+  #   But the challenger is not doing arithmetic. Its job is to judge whether
+  #   the evidence actually RESOLVES the claim -- and its observed failure
+  #   mode is producing a CONFIDENT, plausible-sounding answer instead of
+  #   flagging uncertainty. That is the exact opposite of what this role
+  #   needs. A challenger that answers "HOLDS" with confidence when the
+  #   evidence is inconclusive will AGREE with the evaluator, and the
+  #   disagreement matrix -- the whole point of the role -- will fail to fire.
+  #   A weak challenger makes the gate fire LESS, which is the wrong
+  #   direction. Nemotron was in this roster on 2026-10-22 and was removed
+  #   for exactly this reason; do not put it back without re-arguing it.
+  models:
+    - beatapi/deepseek-v4.1-flash-free                # free, different provider
+    - deepseek/deepseek-flash                         # paid
+  committee_size: 1
+  min_votes: 1
+
+reporter:
+  models:
+    - fcc-nim/nvidia_nim/nvidia/nemotron-3-ultra-550b-a55b
+    - fcc-gemini/gemini/models/gemini-3.5-flash-lite
+    - deepseek/deepseek-flash
+  committee_size: 1
+  min_votes: 1
+
+# Per-model DAILY CALL CAPS, enforced by usage_ledger.check_daily_cap before
+# a call is made. At the cap the role PARKS instead of spending, which is why
+# this is the real money guardrail for the paid lane -- not the balance probe,
+# which only catches the balance already being gone.
+#
+# Sizing for deepseek/deepseek-flash (price page 2026-10-30, off-peak):
+#   $0.15/1M in, $0.60/1M out. A pipeline call measures ~3k in / ~1.5k out
+#   = ~$0.0014. 120 calls/day is a ~$0.17/day ceiling, and the observed
+#   pipeline workload is ~9 calls per packet.
+daily_caps:
+  deepseek/deepseek-flash: 120
+  deepseek/deepseek-v4-pro: 20          # 3x price; last resort only
+  fcc-gemini/gemini/models/gemini-3.5-flash-lite: 20   # vendor limit is 20/DAY/model
+  fcc-gemini/gemini/models/gemini-3.8-flash: 20
+  # OpenCode Go lanes are NOT call-capped on the other models, deliberately.
+  # Measured 2026-11-15: the main driver did 1,160 calls in a day for $1.59 of
+  # usage value, because most of each call is a cache read. A call cap sized to
+  # feel safe (200) would have refused a lane using 1.6% of its allowance, and
+  # the DOLLAR window in budget-policy.yaml is what actually binds (5-hour =
+  # 20% of the monthly allowance). One call cap here would be a number picked
+  # by feel, refusing the cheap lane while the expensive one runs on.
+  #
+  # The one exception is a cap of 0, which means RETIRED: it refuses before the
+  # call and needs no measurement.
+  opencode-go/minimax-m3.1-flash: 0     # retired 2026-11-15; see go.self_limits
+
+# ---------------------------------------------------------------------------
+# WHICH LANE FOR WHICH JOB (measured 2026-11-15, not preference)
+#
+# The unit that matters is not price per token, it is price per token against
+# the MONTHLY ALLOWANCE the lane draws from. A $15 allowance at $1.40/$4.40
+# drains ~20x faster than a $100 allowance at $0.15/$0.60, because every dollar
+# of usage eats a larger share of a much smaller pot.
+#
+#   LONG SESSIONS, MAIN DRIVER      opencode-go/deepseek-v4.1-flash
+#       $100/month, 5h $20, week $50, off-peak $0.15/$0.60. At 6% of the
+#       allowance on day 15 it is the most headroom of anything on the plan.
+#
+#   PARALLEL SEATS, DRAFTING        a FREE lane first, always
+#       opencode-go/beam-free  <-- START HERE. Listed UNLIMITED on Go, so it
+#       draws nothing from any allowance. Measured 2026-11-15: 6s, and it
+#       answered a macOS-specific question correctly (`find . -type f -mtime -1`,
+#       which BSD find supports). Use the GO route, not opencode/beam-free:
+#       the free-tier route answered once and then returned "Free usage limit
+#       reached" on the very next call, so it is a one-shot, not a seat.
+#       opencode/glm-5.3-flash-free, opencode/big-pickle,
+#       opencode/deepseek-v4.1-flash-free, fcc-nim nemotron, fcc-gemini lite.
+#       These draw from nobody's allowance. A parallel seat that is free is
+#       strictly better than a parallel seat that is cheap.
+#
+#   CHEAP PAID SPIKE (free lanes down)  opencode-go/glm-5.3-flash
+#       $60/month at $0.15/$0.50, and $12 of 5-hour room. Same price class as
+#       the free GLM lanes, so a substitution here changes nothing but the bill.
+#
+#   CODE SWEEPS                     opencode-go/kimi-k2.7-code   $60/mo
+#   LARGE CONTEXT                   opencode-go/hy4              $60/mo
+#
+#   DO NOT DEFAULT TO THESE (tiny allowance, big price per token):
+#       glm-5.3            $15 at $1.40/$4.40
+#       kimi-k3            $15 at $3.00/$15.00
+#       grok-4.7           $15 at $2.00/$6.00
+#       claude-haiku-5-5   $15 at $0.10/$0.50   (cheap token, small pot)
+#       qwen3.8-max        $15 at $2.00/$6.00
+#   5-hour caps on those are $3, which is two or three long agentic turns.
+#
+#   RETIRED: minimax-m3.1-flash. $20 vendor allowance, already 44% of its
+#   WEEKLY window after three days, and it does nothing the two lanes above do
+#   not. Self-capped to $8 in budget-policy.yaml, daily_caps 0 here.
+# ---------------------------------------------------------------------------

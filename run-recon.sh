@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cd "/c/Users/Gaming PC/Developer/bugBounty"
+bash tools/pipeline/x-frack recon ynab "YNAB staging recon. Build on scout output: 8 families, 32 vectors. Prioritize: (1) mail previewer unauth GET, (2) dispatcher duplicate-param + cross-budget upsert with fixture, (3) 2FA login/enrolment bypass. Need: actual endpoint responses, auth flow details, dispatcher operation_name enum, webhook/export endpoints, background job queue evidence, collaborator invitation API. Two budgets on one account (A: 91542336-5651-4a4d-92ac-e31f17d271a0, B: d1066077-12f2-47d4-b420-e9084ac5e841). Second account needed for cross-tenant tests. Scope: staging-app.bany.dev, staging-api.bany.dev only."

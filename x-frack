@@ -1,0 +1,46 @@
+#!/usr/bin/env bash
+# x-frack — local X-side wrapper (like `X frack` on Mac, but runs here)
+# Usage: x-frack <stage> <target> "<prompt>"
+
+set -uo pipefail
+
+STAGE="${1:-}"
+TARGET="${2:-}"
+PROMPT="${3:-}"
+
+if [[ -z "$STAGE" || -z "$TARGET" || -z "$PROMPT" ]]; then
+  echo "usage: x-frack <stage> <target> \"<prompt>\"" >&2
+  echo "stages: scout | recon | hypothesis | triage | evaluator | challenger | reporter" >&2
+  exit 2
+fi
+
+if [[ ! "$STAGE" =~ ^(scout|recon|hypothesis|triage|evaluator|challenger|reporter)$ ]]; then
+  echo "invalid stage: $STAGE" >&2
+  exit 2
+fi
+
+# Sanitize job name
+SAFE_TARGET=$(echo "$TARGET" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9]/-/g')
+JOB="${SAFE_TARGET}-${STAGE}-$(date +%s | tail -c 6)"
+JOBDIR="${HOME}/.frack/jobs/$JOB"
+
+mkdir -p "$JOBDIR"
+
+cat > "$JOBDIR/conf" <<EOF
+STAGE=$STAGE
+TARGET=$TARGET
+EOF
+
+cat > "$JOBDIR/prompt.txt" <<EOF
+$PROMPT
+EOF
+
+echo "=== x-frack $JOB ==="
+echo "stage=$STAGE target=$TARGET"
+echo "jobdir=$JOBDIR"
+
+# Run the pipeline
+bash "$(dirname "${BASH_SOURCE[0]}")/frack-run.sh" "$JOB"
+
+# Notify locally (macOS notification via terminal-notifier if on Mac, or just print)
+echo "FRACK_DONE: check ~/.frack/jobs/$JOB/run.log for full output"

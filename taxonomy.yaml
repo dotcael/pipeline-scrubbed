@@ -1,0 +1,326 @@
+# taxonomy.yaml -- the CLOSED vocabulary the outcome ledger is counted by.
+#
+# WHAT THIS FILE IS NOT (2026-10-30)
+# It is a CLASSIFICATION DESTINATION, not a search strategy. A finding arrives
+# first; this decides where it lands. Using it as the list of things to go
+# looking for is how the picker spent October proposing IDOR: 18 classes written
+# from memory, dominated by request-shaped bugs, with the cheapest class to
+# prove winning the selection every time. Hypotheses now come from invariants
+# over state transitions -- see research/techniques/BOUNDARY-FAMILIES.md and the
+# Hypothesis Doctrine in GHOST.md.
+#
+# Every class carries a `vrt:` path into the paying index
+# (research/taxonomy/vrt.json, a public VRT 2026-07-08), so priority is read
+# from a published standard instead of remembered. Where no leaf exists, the
+# field says so -- MASS_ASSIGNMENT has none, and BUSINESS_LOGIC has no VRT
+# category at all. Those gaps are recorded rather than papered over.
+#
+# WHY A CLOSED LIST
+# The ledger's `weakness_class` is a human sentence ("CWE-290 authentication
+# bypass by spoofing (client-controlled Origin header)"). Sentences do not
+# group: forty-five of them produce forty-five buckets, and a pattern map over
+# forty-five buckets of one row each is a lie dressed as analysis. So every
+# record ALSO carries a `class_id` from this file, and `pattern_map.py` counts
+# on that token only.
+#
+# The buckets are fixed BEFORE the corpus is collected -- that is the whole
+# point. Adding a class later is allowed; adding one per finding is not, and
+# the suite refuses a ledger row whose class_id is not listed here.
+#
+# KEYWORDS are the inference bridge for backfilled prose. They are matched
+# case-insensitively against a row's own text, longest-first, and the matched
+# class is recorded with `class_inferred: true` so a guess is never presented
+# as a declaration. A row that matches nothing is OTHER with the reason
+# printed -- never silently dropped.
+
+version: 1
+
+classes:
+  - id: BOLA_IDOR
+    vrt: "Broken Access Control (BAC) > Insecure Direct Object References (IDOR) > Modify/View Sensitive Information(Iterable Object Identifiers) [P1]; GUID/UUID variant [P4]"
+    cwe: [CWE-639, CWE-862]
+    label: Broken object-level authorization / IDOR
+    keywords:
+      - "idor"
+      - "bola"
+      - "object-level authorization"
+      - "object level authorization"
+      - "ownership check"
+      - "ownership verification"
+      - "cross-account write"
+      - "cross-account read"
+      - "another customer's"
+      - "another user's"
+
+  - id: AUTH_BYPASS
+    vrt: "Broken Authentication and Session Management > Authentication Bypass [P1]"
+    cwe: [CWE-290, CWE-287]
+    label: Authentication bypass / authentication performed by a client-controlled value
+    keywords:
+      - "authentication bypass"
+      - "auth bypass"
+      - "unauthenticated access"
+      - "without authentication"
+      - "client-supplied origin"
+      - "origin header"
+      - "api key required"
+      - "shared sign_id"
+      - "sign token"
+      - "authentication is satisfied"
+      - "api-key authentication"
+      - "keyless access"
+      - "trusted origin"
+
+  - id: AUTHZ_LOGIC
+    vrt: "Broken Access Control (BAC) > Privilege Escalation"
+    label: Authorization logic error (role, tenant or plan boundary)
+    keywords:
+      - "authorization"
+      - "authorisation"
+      - "privilege escalation"
+      - "role"
+      - "tenant"
+      - "entitlement"
+      - "rbac"
+
+  - id: XSS
+    vrt: "Cross-Site Scripting (XSS) [varies]"
+    label: Cross-site scripting
+    keywords:
+      - "xss"
+      - "script injection"
+      - "sanitizer"
+      - "bypasssecuritytrust"
+
+  - id: SSRF
+    vrt: "Server Security Misconfiguration > Server-Side Request Forgery (SSRF) > Internal Secrets Exposure [P2]; DNS-only [P5]"
+    label: Server-side request forgery
+    keywords:
+      - "ssrf"
+      - "server-side request forgery"
+
+  - id: INFO_DISCLOSURE
+    vrt: "Sensitive Data Exposure > Disclosure of Secrets > PII Leakage/Exposure"
+    cwe: [CWE-200]
+    label: Information disclosure of another principal's data
+    keywords:
+      - "information disclosure"
+      - "identity leak"
+      - "email disclosure"
+      - "creatoremail"
+      - "pii"
+      - "discloses"
+
+  - id: SECRET_EXPOSURE
+    vrt: "Sensitive Data Exposure > Disclosure of Secrets > For Publicly Accessible Asset [P1] / For Internal Asset [P3]"
+    cwe: [CWE-321, CWE-798]
+    label: Secret or key exposure in a shipped artefact
+    keywords:
+      - "api key"
+      - "apikey"
+      - "client secret"
+      - "hardcoded"
+      - "credential"
+      - "token exposure"
+
+  - id: DEPLOY_ARTEFACT
+    vrt: "Sensitive Data Exposure > Disclosure of Secrets > For Internal Asset [P3]"
+    label: Shipped artefact exposes development material (sourcemaps, debug builds)
+    keywords:
+      - "source map"
+      - "sourcemap"
+      - ".map"
+      - "debug build"
+      - "original sources"
+
+  - id: BUSINESS_LOGIC
+    vrt: "NO VRT CATEGORY EXISTS -- business logic has no home on the paying index"
+    cwe: [CWE-840]
+    label: Business logic / workflow abuse
+    keywords:
+      - "business logic"
+      - "discount"
+      - "stacking"
+      - "price"
+      - "coupon"
+      - "refund"
+      - "loyalty points"
+
+  - id: RATE_LIMIT_QUOTA
+    vrt: "Server Security Misconfiguration > No Rate Limiting on Form > Login [P4]"
+    label: Missing rate limit or quota enforcement
+    keywords:
+      - "rate limit"
+      - "ratelimit"
+      - "quota"
+      - "unmetered"
+      - "brute force"
+
+  - id: MASS_ASSIGNMENT
+    vrt: "no dedicated leaf -- nearest Broken Access Control (BAC) > Privilege Escalation"
+    label: Mass assignment / client-controlled privilege field
+    keywords:
+      - "mass assignment"
+      - "client-supplied points"
+      - "client-controlled field"
+
+  - id: CSRF
+    vrt: "Cross-Site Request Forgery (CSRF) [varies]"
+    label: Cross-site request forgery
+    keywords:
+      - "csrf"
+
+  - id: OPEN_REDIRECT
+    vrt: "Unvalidated Redirects and Forwards > Open Redirect > GET-Based [P4]"
+    label: Open redirect
+    keywords:
+      - "open redirect"
+      - "evil-sibling"
+      - "redirect_uri"
+
+  - id: INJECTION
+    vrt: "Server-Side Injection > SQL Injection / Remote Code Execution [P1]; SSTI Basic [P4]"
+    label: Injection (SQL, template, command, header)
+    keywords:
+      - "sqli"
+      - "sql injection"
+      - "ssti"
+      - "template injection"
+      - "command injection"
+      - "header injection"
+
+  - id: SUBDOMAIN_TAKEOVER
+    vrt: "Server Security Misconfiguration > Misconfigured DNS > Subdomain Takeover [P3]"
+    label: Subdomain or DNS takeover / dangling record
+    keywords:
+      - "subdomain takeover"
+      - "dangling"
+      - "nxdomain"
+
+  - id: MISCONFIG_EDGE
+    vrt: "Server Security Misconfiguration > Lack of Security Headers [P5]"
+    label: Perimeter or edge misconfiguration (WAF, CORS, headers)
+    keywords:
+      - "cors"
+      - "security header"
+      - "waf"
+      - "misconfiguration"
+
+  - id: DESERIALIZATION
+    vrt: "no VRT leaf exists (checked 2026-10-30) -- maps to Server-Side Injection > Remote Code Execution when it reaches execution"
+    label: Unsafe deserialization
+    keywords:
+      - "deserialization"
+      - "unserialize"
+
+  - id: OTHER
+    label: Unclassified (the backfill prints the reason; it is never silent)
+    keywords: []
+
+  # ── added 2026-10-30 from the four-model consult (advisor-consults/
+  # CONSULT-2026-10-30-techniques.md) and the VRT read-through
+  # (research/taxonomy/vrt-map.md). These are the classes our previous 18
+  # could not express, and they are the ones the two-account differential
+  # can actually prove.
+
+  - id: AUTHZ_STALE
+    vrt: "Broken Authentication and Session Management > Failure to Invalidate Session > On Permission Change"
+    label: Authority outlives the permission that justified it (revocation, downgrade, removal, expiry)
+    keywords:
+      - "revocation"
+      - "revoked"
+      - "removed member"
+      - "former member"
+      - "after downgrade"
+      - "stale session"
+      - "permission change"
+      - "still has access"
+      - "outlives"
+      - "no longer a member"
+
+  - id: DERIVED_DATA_LEAK
+    vrt: "Sensitive Data Exposure > Disclosure of Secrets > PII Leakage/Exposure"
+    label: A derived representation (search, export, feed, report) leaks what the canonical path protects
+    keywords:
+      - "export"
+      - "activity feed"
+      - "snippet"
+      - "facet"
+      - "search index"
+      - "generated report"
+      - "derived data"
+      - "search result"
+
+  - id: JOB_PRINCIPAL
+    vrt: "no dedicated leaf -- nearest BAC > IDOR or Failure to Invalidate Session"
+    label: A background job or worker acts with different authority than the principal who was checked
+    keywords:
+      - "export job"
+      - "background job"
+      - "job id"
+      - "worker"
+      - "async job"
+      - "job status"
+      - "queued task"
+
+  - id: CACHE_AUTHZ
+    vrt: "Server Security Misconfiguration > Cache Deception / Cache Poisoning"
+    label: Authorization decision differs across cached and uncached paths
+    keywords:
+      - "cache poisoning"
+      - "cache deception"
+      - "cached response"
+      - "cdn cache"
+      - "cache key"
+
+  - id: RACE_CONDITION
+    vrt: "Server Security Misconfiguration > Race Condition"
+    label: Check and use are not atomic (consumables, quotas, one-time tokens)
+    keywords:
+      - "race condition"
+      - "toctou"
+      - "simultaneous"
+      - "single packet"
+      - "double spend"
+      - "consumed twice"
+
+  - id: OAUTH_FLOW
+    vrt: "Server Security Misconfiguration > OAuth Misconfiguration > Missing/Broken State Parameter (no baseline priority)"
+    label: Auth-flow state not bound to the initiating session or not single-use
+    keywords:
+      - "oauth"
+      - "state parameter"
+      - "redirect_uri"
+      - "oidc"
+      - "pkce"
+      - "sso flow"
+      - "login csrf"
+
+  - id: AI_PROMPT_INJECTION
+    vrt: "AI Application Security > Prompt Injection > System Prompt Leakage [P2]"
+    label: Untrusted content changes model behaviour across a real security boundary
+    keywords:
+      - "prompt injection"
+      - "ignore previous instructions"
+      - "system prompt"
+      - "indirect injection"
+
+  - id: AI_RETRIEVAL_LEAK
+    vrt: "AI Application Security > Sensitive Information Disclosure > Cross-Tenant PII Leakage/Exposure [P1]"
+    label: Retrieval/embedding layer authorizes differently from document access
+    keywords:
+      - "rag"
+      - "retrieval-augmented"
+      - "embedding"
+      - "knowledge base"
+      - "vector store"
+      - "ai citation"
+
+  - id: AI_OUTPUT_RENDER
+    vrt: "AI Application Security > Improper Output Handling > Cross-Site Scripting (XSS) [P3]"
+    label: Model output consumed downstream without validation
+    keywords:
+      - "improper output handling"
+      - "markdown injection"
+      - "model output"
+      - "llm output"

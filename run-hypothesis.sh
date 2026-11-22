@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+cd "/c/Users/Gaming PC/Developer/bugBounty"
+bash tools/pipeline/x-frack hypothesis ynab "YNAB staging hypothesis. Using scout output: 8 families, 32 vectors, cost-ordered run plan. Top priorities: (1) S1 mail previewer unauth GET /letter_opener /rails/mailers, (2) A1+E1 dispatcher duplicate-param + cross-budget upsert (fixture exists), (3) C1+F1 2FA login/enrolment bypass. Context: two budgets on one verified account (A: 91542336-5651-4a4d-92ac-e31f17d271a0, B: d1066077-12f2-47d4-b420-e9084ac5e841), sync surface BOUNDARY HOLDS. Need: CVSS vectors for each hypothesis, committee vote. Scope: staging-app.bany.dev, staging-api.bany.dev only."

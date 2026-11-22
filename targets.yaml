@@ -1,0 +1,7 @@
+# Example target config. Replace with your own authorised targets.
+targets:
+  program-a:
+    aliases: ["program-a", "example program"]
+    platform: example-platform
+    policy_source: "operator-supplied written scope"
+    live_touch: prohibited

@@ -1,0 +1,195 @@
+[
+  {
+    "id": "F1-real-cross-tenant",
+    "label": "GENUINE_FINDING",
+    "expected": "reproduced",
+    "why": "B's export contains A's marker; the marker came from A's record (not from B's request); the owner still gets it.",
+    "marker": "GHOST-ALPHA-7f31",
+    "marker_source": "other_principal_record",
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/api/exports/9f2c",
+        "status": 200,
+        "body": "{\"rows\":[{\"title\":\"Q4 planning\",\"note\":\"GHOST-ALPHA-7f31\"}]}"
+      },
+      "control": {
+        "principal": "A (owner)",
+        "method": "GET",
+        "path": "/api/exports/9f2c",
+        "status": 200,
+        "body": "{\"rows\":[{\"title\":\"Q4 planning\",\"note\":\"GHOST-ALPHA-7f31\"}]}"
+      }
+    }
+  },
+  {
+    "id": "F2-echo-trap",
+    "label": "ECHO_TRAP",
+    "expected": "refuted",
+    "why": "The marker is the id WE sent in the path. The server reflects it. Nothing crossed a boundary.",
+    "marker": "GHOST-ECHO-991",
+    "marker_source": "own_request",
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/api/items/GHOST-ECHO-991",
+        "status": 200,
+        "body": "{\"id\":\"GHOST-ECHO-991\",\"_links\":{\"self\":\"/api/items/GHOST-ECHO-991\"}}"
+      },
+      "control": {
+        "principal": "A (owner)",
+        "method": "GET",
+        "path": "/api/items/GHOST-ECHO-991",
+        "status": 200,
+        "body": "{\"id\":\"GHOST-ECHO-991\",\"_links\":{\"self\":\"/api/items/GHOST-ECHO-991\"}}"
+      }
+    }
+  },
+  {
+    "id": "F3-spa-shell",
+    "label": "SPA_SHELL_200",
+    "expected": "refuted",
+    "why": "Authenticated and unauthenticated bodies are identical: it is the app shell, served to everyone.",
+    "marker": "GHOST-ALPHA-7f31",
+    "marker_source": "other_principal_record",
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/app/workspace/9f2c",
+        "status": 200,
+        "body": "<!doctype html><html><head><title>App</title></head><body><div id=root></div></body></html>"
+      },
+      "control": {
+        "principal": "A (owner)",
+        "method": "GET",
+        "path": "/app/workspace/9f2c",
+        "status": 200,
+        "body": "<!doctype html><html><head><title>App</title></head><body><div id=root></div></body></html>"
+      },
+      "unauthenticated": {
+        "principal": "anon",
+        "method": "GET",
+        "path": "/app/workspace/9f2c",
+        "status": 200,
+        "body": "<!doctype html><html><head><title>App</title></head><body><div id=root></div></body></html>"
+      }
+    }
+  },
+  {
+    "id": "F4-error-body-200",
+    "label": "ERROR_BODY_200",
+    "expected": "refuted",
+    "why": "HTTP 200, but the body says the object was not found. The status lied; the app refused.",
+    "marker": "GHOST-ALPHA-7f31",
+    "marker_source": "other_principal_record",
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/api/documents/9f2c",
+        "status": 200,
+        "body": "{\"error\":\"Document not found\"}"
+      },
+      "control": {
+        "principal": "A (owner)",
+        "method": "GET",
+        "path": "/api/documents/9f2c",
+        "status": 200,
+        "body": "{\"id\":\"9f2c\",\"note\":\"GHOST-ALPHA-7f31\"}"
+      }
+    }
+  },
+  {
+    "id": "F5-control-failed",
+    "label": "CONTROL_FAILED",
+    "expected": "invalid",
+    "why": "The owner was also refused. Either the path is wrong or the session is dead; nothing can be concluded.",
+    "marker": "GHOST-ALPHA-7f31",
+    "marker_source": "other_principal_record",
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/api/documents/9f2c",
+        "status": 403,
+        "body": "{\"error\":\"Forbidden\"}"
+      },
+      "control": {
+        "principal": "A (owner)",
+        "method": "GET",
+        "path": "/api/documents/9f2c",
+        "status": 403,
+        "body": "{\"error\":\"Forbidden\"}"
+      }
+    }
+  },
+  {
+    "id": "F6-no-control",
+    "label": "NO_CONTROL",
+    "expected": "invalid",
+    "why": "A 200 from the test principal with no control proves the path is live, not that a boundary was crossed.",
+    "marker": "GHOST-ALPHA-7f31",
+    "marker_source": "other_principal_record",
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/api/documents/9f2c",
+        "status": 200,
+        "body": "{\"id\":\"9f2c\",\"note\":\"GHOST-ALPHA-7f31\"}"
+      }
+    }
+  },
+  {
+    "id": "F7-count-only",
+    "label": "COUNT_ONLY",
+    "expected": "insufficient",
+    "why": "Search returned total=1 for A's private marker, but no protected field. The query saw a row; nothing crossed.",
+    "marker": "GHOST-ALPHA-7f31",
+    "marker_source": "other_principal_record",
+    "counts": { "test": 1 },
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/api/search?q=GHOST-ALPHA-7f31",
+        "status": 200,
+        "body": "{\"total\":1,\"results\":[]}"
+      },
+      "control": {
+        "principal": "A (owner)",
+        "method": "GET",
+        "path": "/api/search?q=GHOST-ALPHA-7f31",
+        "status": 200,
+        "body": "{\"total\":1,\"results\":[{\"note\":\"GHOST-ALPHA-7f31\"}]}"
+      }
+    }
+  },
+  {
+    "id": "F8-marker-not-in-control",
+    "label": "MARKER_ABSENT_FROM_OWNER",
+    "expected": "invalid",
+    "why": "The marker is not in the owner's record either, so it cannot be another principal's data. The test is mis-specified.",
+    "marker": "GHOST-ALPHA-7f31",
+    "marker_source": "other_principal_record",
+    "requests": {
+      "test": {
+        "principal": "B",
+        "method": "GET",
+        "path": "/api/documents/9f2c",
+        "status": 200,
+        "body": "{\"id\":\"9f2c\",\"note\":\"GHOST-ALPHA-7f31\"}"
+      },
+      "control": {
+        "principal": "A (owner)",
+        "method": "GET",
+        "path": "/api/documents/9f2c",
+        "status": 200,
+        "body": "{\"id\":\"9f2c\",\"note\":\"something else entirely\"}"
+      }
+    }
+  }
+]

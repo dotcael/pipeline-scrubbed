@@ -1,0 +1,5 @@
+# Example aliases. Add only names you are authorised to work with.
+aliases:
+  program-a:
+    aliases: ["program-a"]
+    platform: example-platform
